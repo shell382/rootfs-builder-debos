@@ -1,0 +1,168 @@
+{{- $architecture := or .architecture "amd64" -}}
+{{- $image := or .image (printf "ubuntu-touch-pdk-%s.img" $architecture) -}}
+{{- $cdimagesmirror := or .cdimagesmirror "http://cdimage.ubuntu.com" -}}
+{{- $additional_apt_repos := or .additional_apt_repos "" -}}
+{{- $phablet_password := or .phablet_password "" }}
+
+architecture: {{ $architecture }}
+actions:
+  - action: recipe
+    description: Setup base rootfs
+    recipe: focal-base.yaml
+    variables:
+      architecture: {{ $architecture }}
+      cdimagesmirror: {{ $cdimagesmirror }}
+      skip_remove_apt_user: true
+      additional_apt_repos: {{ $additional_apt_repos }}
+
+  - action: run
+    descriptions: Run Ubuntu Touch early hooks
+    chroot: true
+    script: ./ubuntu-touch/hooks/run-hooks.sh chroot_early
+    label: run-parts
+
+    # TODO: should have a task pacakge at some point.
+  - action: run
+    description: Install packages
+    chroot: true
+    script: >-
+      ../scripts/apt-install.sh --no-install-recommends
+      ubuntu-minimal ubuntu-standard
+      network-manager openssh-server hybris-usb
+      ubuntu-touch-session lomiri-indicator-network libnss-extrausers
+      lomiri-keyboard lomiri-keyboard-english
+      lomiri-system-settings lomiri-system-settings-system-update
+      system-image-cli system-image-dbus
+      libqt5gui5-gles libqt5gui5- qtwayland5 qtubuntu-android
+      qml-module-qtquick-controls2
+      mir-graphics-drivers-desktop
+      repowerd
+      pulseaudio
+      pulseaudio-modules-droid-24 pulseaudio-modules-droid-28
+      pulseaudio-modules-droid-glue-24 pulseaudio-modules-droid-glue-28
+      pulseaudio-modules-droid-hidl-28 pulseaudio-module-droid-discover
+      nano bash-completion
+      ubports-qa-scripts
+      linux-firmware
+      linux-image-generic-hwe-20.04
+      initramfs-tools
+      libegl-mesa0
+      libgbm1 libgl1-mesa-dri libgl1-mesa-glx
+      libglapi-mesa libgles2-mesa libglx-mesa0
+      libosmesa6
+      dpkg-dev
+    label: apt-install.sh
+
+{{ if eq $architecture "arm64" }}
+  - action: run
+    chroot: true
+    description: Install arm64 GRUB
+    script: >-
+      ../scripts/apt-install.sh
+      grub-efi-arm64 grub-efi-arm64-bin
+{{ end }}
+
+{{ if eq $architecture "amd64" }}
+  - action: run
+    chroot: true
+    description: Install amd64 GRUB
+    script: >-
+      ../scripts/apt-install.sh
+      grub-pc-bin grub-efi-amd64-signed shim-signed
+{{ end }}
+
+
+  - action: overlay
+    description: Add Ubuntu Touch overlays
+    source: ./ubuntu-touch/overlay
+    destination: /
+
+  - action: recipe
+    description: Run selected hooks from live-build
+    recipe: ../common/live-build-hooks.yaml
+    variables:
+      architecture: {{ $architecture }}
+      lb_chroot_hooks: >-
+        update-apt-xapian-index
+        update-mlocate-database
+        remove-dbus-machine-id
+        remove-openssh-server-host-keys
+        remove-udev-persistent-rules
+        remove-python-py
+
+  - action: run
+    descriptions: Run Ubuntu Touch hooks
+    chroot: true
+    script: ./ubuntu-touch/hooks/run-hooks.sh chroot
+    label: run-parts
+
+  - action: overlay
+    source: pdk/overlay
+    description: Adding PDK overlay
+    destination: /
+
+  - action: image-partition
+    description: Creating image
+    imagename: {{ $image }}
+    imagesize: 15GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: systemanddata
+      - mountpoint: /boot
+        partition: boot
+      - mountpoint: /boot/efi
+        partition: efi
+    partitions:
+      - name: efi
+        fs: vfat
+        start: 1M
+        end: 200MB
+        parttype: EF
+        flags: [ esp ]
+      - name: boot
+        fs: ext2
+        start: 200MB
+        end: 500MB
+      - name: systemanddata
+        fs: ext4
+        start: 500MB
+        end: 100%
+
+  - action: filesystem-deploy
+    description: Deploying filesystem into image
+
+  - action: run
+    chroot: true
+    command: update-grub && update-initramfs -u
+
+{{ if eq $architecture "amd64" }}
+  - action: run
+    chroot: true
+    command: grub-install /dev/vda --target=i386-pc
+
+  - action: run
+    chroot: true
+    command: grub-install --target=x86_64-efi --no-nvram --removable
+{{ end }}
+
+{{ if eq $architecture "arm64" }}
+  - action: run
+    chroot: true
+    command: grub-install --target=arm64-efi --no-nvram
+{{ end }}
+
+  - action: run
+    description: Disable mir's modeset probe globally
+    chroot: true
+    command: echo 'MIR_MESA_KMS_DISABLE_MODESET_PROBE=1' >> /etc/environment
+
+  # polish.yaml must be run as the last step, as it contains the
+  # step to (re-)create /etc/writable symlinks and systemd-nspawn
+  # tends to overwrite them.
+  - action: recipe
+    description: Run common image polishing steps
+    recipe: ../polish.yaml
+    variables:
+      architecture: {{ $architecture }}
+      output_type: tarball

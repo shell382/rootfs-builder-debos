@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# We need to grab ANDROID_ROOT from /etc/environment, because Mir uses
+# it to find input configuration files and autopilot won't work without that.
+. /etc/environment
+export ANDROID_ROOT
+export MIR_SERVER_ENABLE_MIRCLIENT=1
+export MIR_MESA_KMS_DISABLE_MODESET_PROBE=1
+
+# FIXME: this is done primarily to prevent collision with root's user session.
+# This should be done by LightDM when it properly support system compositor
+# over Wayland.
+export XDG_RUNTIME_DIR=/run
+export WAYLAND_DISPLAY=wayland-syscomp
+
+exec lomiri-system-compositor --enable-num-framebuffers-quirk=true --disable-overlays=false --console-provider=vt --spinner=/usr/bin/lomiri-system-compositor-spinner "$@"
+#exec miral-system-compositor --arw-file

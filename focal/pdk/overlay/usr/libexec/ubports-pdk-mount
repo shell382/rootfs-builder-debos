@@ -1,0 +1,51 @@
+#!/bin/bash
+
+set -e
+
+TRY_VIRTIOFS=$(mount -t virtiofs myfs /pdk/sources && echo 1 || echo 0)
+if [ "$TRY_VIRTIOFS" == "1" ]; then
+    echo "virtiofs mounted, done."
+    exit 0
+fi
+
+# The rest of this script is just for SSH-based mounting
+if [ ! -L /dev/disk/by-label/PDKSETTINGS ]; then
+    echo "PDK settings partition missing"
+    exit 1
+fi
+
+if [ ! -d /pdk/settings ]; then
+    mkdir -p /pdk/settings
+fi
+
+if mountpoint -q /pdk/settings; then
+    echo "/pdk/settings mounted already"
+else
+    mount /dev/disk/by-label/PDKSETTINGS /pdk/settings
+fi
+
+if mountpoint -q /pdk/settings; then
+    echo "/pdk/settings still mounted"
+else
+    echo "PDK settings image failed to mount"
+    exit 1
+fi
+
+if [ ! -f "/pdk/settings/config.sh" ]; then
+    echo "PDK settings missing"
+    exit 1
+fi
+
+if [ ! -d /root/.ssh ]; then
+    mkdir /root/.ssh || true
+fi
+chmod 700 /root/.ssh
+
+cp "/pdk/settings/id_rsa" "/root/.ssh/id_rsa"
+chmod 600 /root/.ssh/id_rsa
+
+cp "/pdk/settings/id_rsa.pub" "/root/.ssh/id_rsa.pub"
+chmod 600 /root/.ssh/id_rsa.pub
+
+source "/pdk/settings/config.sh"
+sshfs $USER@10.0.2.2:$SRC_ROOT /pdk/sources -o uid=32011,gid=32011,allow_other -o IdentityFile=/root/.ssh/id_rsa -o StrictHostKeyChecking=no 
