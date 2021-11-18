@@ -14,6 +14,8 @@
 /{,android/}vendor/lib{,64}/**.so        m,
 /{,android/}apex/com.android.runtime/lib{,64}/**     r,
 /{,android/}apex/com.android.runtime/lib{,64}/**.so  m,
+/{,android/}apex/com.android.art/lib{,64}/**     r,
+/{,android/}apex/com.android.art/lib{,64}/**.so  m,
 
 # Allow access to build.prop, properties and logging daemon
 /dev/__properties__/*          r,
@@ -21,5 +23,5 @@
 /{,android/}system/build.prop r,
 
 # Device nodes needed for graphics
-/dev/pmsg0                    rw,
-/dev/hwbinder                 rw,
+/dev/pmsg0                       rw,
+/dev/{,binderfs/}{,hw,vnd}binder rw,
