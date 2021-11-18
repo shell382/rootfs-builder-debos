@@ -68,7 +68,7 @@ if ! mountpoint -q -- /vendor; then
 fi
 
 # mount tmpfs for vendor mounts
-mount -t tmpfs tmpfs /mnt/vendor
+mount -t tmpfs tmpfs /mnt
 
 sys_persist="/sys/firmware/devicetree/base/firmware/android/fstab/persist"
 if [ -e $sys_persist ]; then
@@ -129,7 +129,7 @@ cat ${fstab} | while read line; do
     ([ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]) && continue
     ([ "$2" = "/system" ] || [ "$2" = "/data" ] || [ "$2" = "/" ] \
     || [ "$2" = "auto" ] || [ "$2" = "/vendor" ] || [ "$2" = "none" ] \
-    || [ "$2" = "/misc" ]) && continue
+    || [ "$2" = "/misc" ] || [ "$2" = "/product" ]) && continue
     ([ "$3" = "emmc" ] || [ "$3" = "swap" ] || [ "$3" = "mtd" ]) && continue
 
     label=$(echo $1 | awk -F/ '{print $NF}')
@@ -154,3 +154,6 @@ cat ${fstab} | while read line; do
     echo "mounting $path as $2"
     mount $path $2 -t $3 -o $(parse_mount_flags $4)
 done
+
+# some mounts may fail, but this is not fatal, so make sure to exit normally
+exit 0
