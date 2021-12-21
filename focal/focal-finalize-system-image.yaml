@@ -9,6 +9,16 @@ actions:
     command: echo phablet:{{ $phablet_password }} | chpasswd
   {{ end }}
 
+  - action: run
+    description: Create package manifest
+    chroot: true
+    command: dpkg-query -Wf '${binary:Package} ${source:Package} ${source:Version}\n' > /packages
+
+  - action: run
+    description: Output package manifest
+    chroot: false
+    command: mv $ROOTDIR/packages $ARTIFACTDIR/{{ .image }}.manifest
+
   # polish.yaml must be run as the last step, as it contains the
   # step to (re-)create /etc/writable symlinks and systemd-nspawn
   # tends to overwrite them.

@@ -12,7 +12,7 @@ def build_image = {
       -t "image:$IMAGE" -t "architecture:${ARCHITECTURE}"
   '''
   sh 'echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)_${ARCHITECTURE}_${GIT_BRANCH}_${BUILD_NUMBER}_${GIT_COMMIT}" | tee "${IMAGE}.build"'
-  archiveArtifacts(artifacts: '*.tar.gz,*.build', fingerprint: true, onlyIfSuccessful: true)
+  archiveArtifacts(artifacts: '*.tar.gz,*.build,*.manifest', fingerprint: true, onlyIfSuccessful: true)
 }
 
 def check_for_changes = {
