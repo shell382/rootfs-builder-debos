@@ -1,0 +1,12 @@
+[Unit]
+Description=adbd for the PDK image
+Wants=multi-user.target
+Before=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/adbd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

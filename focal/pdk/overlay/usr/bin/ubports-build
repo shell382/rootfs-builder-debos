@@ -1,0 +1,85 @@
+#!/bin/bash
+
+set -e
+
+PROJECT="$1"
+
+if [ "$PROJECT" == "" ]; then
+    echo "Please provide a project name as an argument (same as for ubports-clone)"
+    exit 1
+fi
+
+PROJECT_ROOT="/pdk/sources"
+PROJECT_BUILDROOT="/pdk/buildsources/$PROJECT"
+
+if [ ! -d "$PROJECT_ROOT/$PROJECT/src" ]; then
+    echo "Project source code not cloned, please clone again with ubports-clone"
+    exit 1
+fi
+
+echo "Copying sources to build directory"
+
+if [ -d "$PROJECT_BUILDROOT" ]; then
+    rm -rf "$PROJECT_BUILDROOT"
+fi
+
+echo "Creating buildroot directory"
+mkdir -p "$PROJECT_BUILDROOT"
+
+cp -a "$PROJECT_ROOT/$PROJECT/src" "$PROJECT_BUILDROOT/src"
+
+cd "$PROJECT_BUILDROOT"
+echo "Trying to build project '$PROJECT'"
+
+# Taken straight from crossbuilder
+first_existing_file () {
+  while [ -n "$1" ]; do
+    if [ -e "$1" ]; then
+      echo "$1"
+      return
+    fi
+
+    shift
+  done
+}
+
+# Also taken from crossbuilder
+source_location_file=$(first_existing_file src/debian/ubports.source_location src/ubports.source_location)
+ORIG_TARBALL=()
+
+if [ -n "$source_location_file" ]; then
+    while read -r SOURCE_URL && read -r TARGET_FILE; do
+        echo "Downloading upstream source tarball of $PROJECT in to $TARGET_FILE"
+        # /dev/null redirection is required. Otherwise, `lxc exec` will closes stdin (i.e. the file).
+        # https://github.com/lxc/lxd/issues/2200
+        wget --continue -O $TARGET_FILE $SOURCE_URL
+        ORIG_TARBALL+=("$TARGET_FILE")
+    done <"$source_location_file"
+elif grep quilt debian/source/format > /dev/null 2>&1 ; then
+    echo "Downloading upstream tarball of $PROJECT"
+    enable_overlay_source
+    # FIXME: try using dget instead so that we can specify a precise version
+    apt-get source --download-only $PACKAGE
+    for t in $(ls *.orig.*); do
+        ORIG_TARBALL+=("$t")
+    done
+fi
+
+cd "$PROJECT_BUILDROOT/src"
+
+INSTALL_CMD="apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y"
+mk-build-deps -t "$INSTALL_CMD" -i -r debian/control
+
+if [ "$ORIG_TARBALL" != "" ]; then
+    for TARBALL in "${ORIG_TARBALL[@]}"; do
+        tar xvf ../$TARBALL --skip-old-files --exclude=debian --strip-components 1 -C .
+    done
+fi
+
+dpkg-buildpackage \
+    -d -us -uc -nc -b \
+    -j$(nproc --all)
+
+mv $PROJECT_BUILDROOT/*.deb "$PROJECT_ROOT/$PROJECT"
+mv $PROJECT_BUILDROOT/*.ddeb "$PROJECT_ROOT/$PROJECT" || true
+echo "Build successful, artifacts stored in '$PROJECT_ROOT/$PROJECT'"
